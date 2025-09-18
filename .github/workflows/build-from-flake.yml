@@ -19,36 +19,17 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
-            binary-caches = s3://nix-cache?endpoint=http://s3.yoreh.cn&region=us-east-1 https://cache.nixos.org https://nix-community.cachix.org
+            binary-caches = https://cache.nixos.org https://nix-community.cachix.org
             require-sigs = false
-
-      - name: Login to Github Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.RUNNER_TOKEN }}
 
       - name: Build Docker image from Nix flake
         run: |
           nix build .#default --out-link result --print-build-logs --quiet
-          docker load < result
-
-      - name: Tag Docker image
-        run: |
-          IMAGE_ID=$(docker image ls --format "{{.Repository}}:{{.Tag}}" | head -n 1)
-          docker tag $IMAGE_ID ${{ vars.REGISTRY }}/${{ github.repository }}:latest
-          echo "Tagged image as ${{ vars.REGISTRY }}/${{ github.repository }}:latest"
-
-      - name: Push Docker image
-        run: |
-          docker tag code-server:nix ${{ vars.REGISTRY }}/${{ github.repository }}:nix
-          docker push ${{ vars.REGISTRY }}/${{ github.repository }}:nix
 
       - name: Cache /nix/store to S3 (Production Safe, Exclude .drv)
         if: always()
         run: |
-          URI="s3://nix-cache?endpoint=http://host.docker.internal:92&region=us-east-1"
+          URI="s3://nix-cache?endpoint=https://s3.yoreh.cn&region=us-east-1"
 
           echo "📦 Exporting binary cache (excluding .drv, source, etc.)..."
 
@@ -71,8 +52,3 @@ jobs:
             $(cat /tmp/paths.txt)
 
           echo "✅ Binary cache exported successfully to: $URI"
-
-      - name: Cleanup All Gitea Volumes
-        if: always()
-        run: |
-          docker volume ls -q --filter "name=GITEA-ACTIONS-TASK" | xargs -r -I {} sh -c 'docker volume rm {} || echo "Failed to remove volume: {}"'
