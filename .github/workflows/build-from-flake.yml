@@ -24,7 +24,7 @@ jobs:
 
       - name: Build Docker image from Nix flake
         run: |
-          nix build .#default --out-link result --print-build-logs --quiet
+          nix build .#packages.aarch64-linux.default --out-link result --print-build-logs --quiet
 
       - name: Cache /nix/store to S3 (Production Safe, Exclude .drv)
         if: always()
