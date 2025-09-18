@@ -1,0 +1,85 @@
+name: Build and Push Docker Image to Gitea Packages (via Nix Flake)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY_ID: tP3FHB4dkjo2lziTO5Gq
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            binary-caches = s3://nix-cache?endpoint=http://s3.yoreh.cn&region=us-east-1 https://cache.nixos.org https://nix-community.cachix.org
+            require-sigs = false
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+
+      - name: Setup Nix Binary Cache Signing Key (if needed)
+        if: ${{ secrets.NIX_CACHE_PRIVATE_KEY != '' }}
+        run: |
+          echo "${{ secrets.NIX_CACHE_PRIVATE_KEY }}" > /tmp/nix-cache-key.sec
+          echo "NIX_BINARY_CACHE_KEY_FILE=/tmp/nix-cache-key.sec" >> $GITHUB_ENV
+
+      - name: Login to Github Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.RUNNER_TOKEN }}
+
+      - name: Build Docker image from Nix flake
+        run: |
+          nix build .#default --out-link result --print-build-logs --quiet
+          docker load < result
+
+      - name: Tag Docker image
+        run: |
+          IMAGE_ID=$(docker image ls --format "{{.Repository}}:{{.Tag}}" | head -n 1)
+          docker tag $IMAGE_ID ${{ vars.REGISTRY }}/${{ github.repository }}:latest
+          echo "Tagged image as ${{ vars.REGISTRY }}/${{ github.repository }}:latest"
+
+      - name: Push Docker image
+        run: |
+          docker tag code-server:nix ${{ vars.REGISTRY }}/${{ github.repository }}:nix
+          docker push ${{ vars.REGISTRY }}/${{ github.repository }}:nix
+
+      - name: Cache /nix/store to S3 (Production Safe, Exclude .drv)
+        if: always()
+        run: |
+          URI="s3://nix-cache?endpoint=http://host.docker.internal:92&region=us-east-1"
+
+          echo "📦 Exporting binary cache (excluding .drv, source, etc.)..."
+
+          if nix path-info --all >/dev/null 2>&1; then
+            nix path-info --all | grep -v '\.drv$' > /tmp/paths.txt
+          else
+            nix-store --query --requisites /nix/store/*-* 2>/dev/null | grep -v '\.drv$' | sort -u > /tmp/paths.txt
+          fi
+
+          COUNT=$(wc -l < /tmp/paths.txt)
+          echo "📤 Found $COUNT binary paths to upload."
+
+          [ "$COUNT" -eq 0 ] && { echo "🎉 No paths to upload."; exit 0; }
+
+          echo "🚀 Uploading with nix copy (auto-skip existing)..."
+          nix copy \
+            --to "$URI" \
+            --no-check-sigs \
+            --option timeout 3600 \
+            $(cat /tmp/paths.txt)
+
+          echo "✅ Binary cache exported successfully to: $URI"
+
+      - name: Cleanup All Gitea Volumes
+        if: always()
+        run: |
+          docker volume ls -q --filter "name=GITEA-ACTIONS-TASK" | xargs -r -I {} sh -c 'docker volume rm {} || echo "Failed to remove volume: {}"'
