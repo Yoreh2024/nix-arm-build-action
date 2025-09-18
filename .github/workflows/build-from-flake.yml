@@ -14,6 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
+      - name: Set up QEMU for multi-arch
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
         with:
@@ -21,6 +26,7 @@ jobs:
             experimental-features = nix-command flakes
             binary-caches = https://cache.nixos.org https://nix-community.cachix.org
             require-sigs = false
+            extra-platforms = aarch64-linux
 
       - name: Build Docker image from Nix flake
         run: |
