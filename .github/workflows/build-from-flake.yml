@@ -64,3 +64,8 @@ jobs:
             $(cat /tmp/paths.txt)
 
           echo "✅ Binary cache exported successfully to: $URI"
+
+      - name: Cache To Cachix 
+        if: always()
+        run: |
+          nix path-info --all | cachix push musl-arm-code-server
