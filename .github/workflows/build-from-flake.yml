@@ -28,6 +28,12 @@ jobs:
             require-sigs = false
             extra-platforms = aarch64-linux
 
+      - name: Cachix
+        uses: cachix/cachix-action@v16
+        with:
+          name: musl-arm-code-server
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
       - name: Build Docker image from Nix flake
         run: |
           nix build .#packages.aarch64-linux.default --out-link result --print-build-logs --quiet
