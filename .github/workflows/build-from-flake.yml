@@ -21,13 +21,6 @@ jobs:
             experimental-features = nix-command flakes
             binary-caches = s3://nix-cache?endpoint=http://s3.yoreh.cn&region=us-east-1 https://cache.nixos.org https://nix-community.cachix.org
             require-sigs = false
-            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
-
-      - name: Setup Nix Binary Cache Signing Key (if needed)
-        if: ${{ secrets.NIX_CACHE_PRIVATE_KEY != '' }}
-        run: |
-          echo "${{ secrets.NIX_CACHE_PRIVATE_KEY }}" > /tmp/nix-cache-key.sec
-          echo "NIX_BINARY_CACHE_KEY_FILE=/tmp/nix-cache-key.sec" >> $GITHUB_ENV
 
       - name: Login to Github Container Registry
         uses: docker/login-action@v3
